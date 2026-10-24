@@ -1,0 +1,16 @@
+{
+  "name": "deriv-mcp",
+  "version": "1.0.0",
+  "description": "Deriv market data MCP server for Claude",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "ws": "8.22.0",
+    "zod": "4.6.7"
+  },
+  "type": "module",
+  "private": true
+}
