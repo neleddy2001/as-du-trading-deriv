@@ -6,6 +6,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import { TIMEFRAMES, withDeriv, fetchCandles, fetchLastPrice, fetchSymbols } from "../lib/deriv.mjs";
+import { summarize, keyLevels } from "../lib/analysis.mjs";
 
 const TF = z.enum(Object.keys(TIMEFRAMES));
 const READ_ONLY = { readOnlyHint: true, openWorldHint: true };
@@ -50,6 +51,36 @@ function buildServer() {
         const out = {};
         for (const tf of timeframes) out[tf] = await fetchCandles(call, symbol, tf, count);
         return out;
+      }));
+    } catch (e) { return fail(e); }
+  });
+
+  server.registerTool("get_market_structure", {
+    title: "Structure de marché multi-unités de temps",
+    description:
+      "Compact technical summary for one instrument across timeframes (default D1, H4, H1), computed server-side from up to 250 candles each: " +
+      "close, bias, swing structure, EMA20/50/200, ATR14, 20-bar range, last candle character, recent swing highs/lows, " +
+      "and the nearest key levels above and below price. Prefer this over get_multi_timeframe for setup analysis: it is far smaller. Read-only.",
+    inputSchema: {
+      symbol: z.string().describe("Instrument, e.g. GBPUSD, XAUUSD, BTCUSD or a Deriv symbol"),
+      timeframes: z.array(TF).min(1).max(5).default(["D1", "H4", "H1"]).describe("Timeframes, dominant first"),
+    },
+    annotations: READ_ONLY,
+  }, async ({ symbol, timeframes }) => {
+    try {
+      return json(await withDeriv(async (call) => {
+        const raw = {};
+        for (const tf of timeframes) raw[tf] = await fetchCandles(call, symbol, tf, 250);
+        const first = raw[timeframes[timeframes.length - 1]];
+        const price = first.candles[first.candles.length - 1][4];
+        const digits = Math.max(2, first.pip_size ?? 5);
+        return {
+          symbol: first.symbol,
+          price: Math.round(price * 10 ** digits) / 10 ** digits,
+          generated_utc: new Date().toISOString(),
+          timeframes: Object.fromEntries(Object.entries(raw).map(([tf, d]) => [tf, summarize(d)])),
+          key_levels: keyLevels(raw, price, digits),
+        };
       }));
     } catch (e) { return fail(e); }
   });
